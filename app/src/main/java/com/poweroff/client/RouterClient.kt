@@ -29,6 +29,21 @@ object RouterClient {
         }
     }
 
+    /** 保留已保存地址的协议和端口，仅把主机替换为新的网关地址 */
+    fun replaceHost(saved: String, host: String): String {
+        val n = normalize(saved) ?: return "http://$host"
+        return try {
+            val u = URL(n)
+            val port = if (u.port != -1) ":${u.port}" else ""
+            "${u.protocol}://$host$port"
+        } catch (e: Exception) {
+            "http://$host"
+        }
+    }
+
+    /** 输入框显示用：省略默认的 http:// */
+    fun display(base: String): String = base.removePrefix("http://")
+
     fun login(base: String, user: String, pass: String): LoginResult {
         var conn: HttpURLConnection? = null
         return try {

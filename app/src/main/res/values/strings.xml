@@ -13,4 +13,11 @@
     <string name="title_power">关机</string>
     <string name="err_connect">无法连接路由器，请检查地址和网络</string>
     <string name="err_login">登录失败，请检查用户名和密码</string>
+    <string name="switch_auto">自动获取 WiFi 网关作为路由器地址</string>
+    <string name="gateway_detecting">正在检测 WiFi 网关…</string>
+    <string name="gateway_current">当前 WiFi 网关：%s</string>
+    <string name="gateway_none">未连接 WiFi，无法获取网关地址</string>
+    <string name="status_no_wifi">未连接 WiFi\n请连接路由器所在的 WiFi，连接后将自动获取网关地址</string>
+    <string name="status_connect">无法连接 %s\n请确认当前 WiFi 是 OpenWrt 路由器所在的网络</string>
+    <string name="status_login">登录失败\n请检查用户名和密码（右上角菜单 → 设置）</string>
 </resources>

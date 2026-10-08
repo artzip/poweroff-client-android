@@ -2,12 +2,27 @@ package com.poweroff.client
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.TextInputEditText
 
 /** 连接设置页：已保存配置时启动后直接进入关机页面 */
 class MainActivity : AppCompatActivity() {
+
+    private var monitor: WifiGateway? = null
+    private var currentGw: String? = null
+    private var programmatic = false
+    private val handler = Handler(Looper.getMainLooper())
+
+    private lateinit var etAddress: TextInputEditText
+    private lateinit var swAuto: MaterialSwitch
+    private lateinit var tvGateway: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -21,20 +36,42 @@ class MainActivity : AppCompatActivity() {
         }
 
         setContentView(R.layout.activity_main)
-        val etAddress = findViewById<TextInputEditText>(R.id.etAddress)
+        etAddress = findViewById(R.id.etAddress)
+        swAuto = findViewById(R.id.swAuto)
+        tvGateway = findViewById(R.id.tvGateway)
         val etUser = findViewById<TextInputEditText>(R.id.etUser)
         val etPass = findViewById<TextInputEditText>(R.id.etPass)
 
-        etAddress.setText(cfg.address.ifEmpty { "192.168.1.1" })
+        swAuto.isChecked = cfg.autoGateway
+        setAddress(RouterClient.display(cfg.address).ifEmpty { "192.168.1.1" })
         etUser.setText(cfg.username)
         etPass.setText(cfg.password)
 
+        // 手动修改地址 → 自动关闭“自动获取”；重新打开开关会再次填入网关
+        etAddress.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+            override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                if (!programmatic && swAuto.isChecked) swAuto.isChecked = false
+            }
+        })
+        swAuto.setOnCheckedChangeListener { _, on -> if (on) fillFromGateway() }
+
+        // 监听 WiFi 切换，自动刷新网关地址
+        monitor = WifiGateway(this, false) { gw ->
+            currentGw = gw
+            updateHint()
+            if (swAuto.isChecked) fillFromGateway()
+        }.also { it.start() }
+        handler.postDelayed({ updateHint() }, 1500)
+
         findViewById<MaterialButton>(R.id.btnEnter).setOnClickListener {
-            val address = etAddress.text.toString().trim()
+            val auto = swAuto.isChecked
+            val raw = etAddress.text.toString().trim()
             val user = etUser.text.toString().trim()
             val pass = etPass.text.toString()
 
-            if (RouterClient.normalize(address) == null) {
+            if (!(auto && raw.isEmpty()) && RouterClient.normalize(raw) == null) {
                 etAddress.error = getString(R.string.err_address)
                 return@setOnClickListener
             }
@@ -43,13 +80,38 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            cfg.address = address
+            cfg.autoGateway = auto
+            cfg.address = raw
             cfg.username = user
             cfg.password = pass
 
             startActivity(Intent(this, PowerActivity::class.java))
             finish()
         }
+    }
+
+    private fun setAddress(text: String) {
+        programmatic = true
+        etAddress.setText(text)
+        programmatic = false
+    }
+
+    private fun fillFromGateway() {
+        val gw = currentGw ?: return
+        val base = RouterClient.replaceHost(etAddress.text.toString(), gw)
+        setAddress(RouterClient.display(base))
+    }
+
+    private fun updateHint() {
+        val gw = currentGw
+        tvGateway.text = if (gw != null) getString(R.string.gateway_current, gw)
+        else getString(R.string.gateway_none)
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        monitor?.stop()
+        super.onDestroy()
     }
 
     companion object {

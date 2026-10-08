@@ -19,6 +19,13 @@
             android:text="@string/settings_title"
             android:textAppearance="?attr/textAppearanceHeadlineSmall" />
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/swAuto"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="@string/switch_auto" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -31,6 +38,15 @@
                 android:inputType="textUri"
                 android:singleLine="true" />
         </com.google.android.material.textfield.TextInputLayout>
+
+        <TextView
+            android:id="@+id/tvGateway"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="4dp"
+            android:text="@string/gateway_detecting"
+            android:textAppearance="?attr/textAppearanceBodySmall" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"

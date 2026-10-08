@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
@@ -13,43 +15,102 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.ProgressBar
-import android.widget.Toast
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
 
-/** 登录路由器并只显示 LuCI 的“关机”页面 */
+/** 登录路由器并只显示 LuCI 的“关机”页面；自动模式下随 WiFi 切换更新路由器地址 */
 class PowerActivity : AppCompatActivity() {
 
     private lateinit var web: WebView
     private lateinit var progress: ProgressBar
+    private lateinit var status: TextView
     private lateinit var cfg: Config
-    private lateinit var base: String
-    private lateinit var target: String
+    private lateinit var gateway: WifiGateway
+
+    private var base = ""
+    private var target = ""
+    private var auto = false
     private var relogged = false
+    private var generation = 0
+    private val handler = Handler(Looper.getMainLooper())
+
+    private val noWifi = Runnable {
+        if (auto && gateway.gateway == null) showStatus(getString(R.string.status_no_wifi))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_power)
 
         cfg = Config(this)
-        base = RouterClient.normalize(cfg.address) ?: run { openSettings(); return }
-        target = "$base/cgi-bin/luci/admin/system/poweroff"
+        auto = cfg.autoGateway
 
         web = findViewById(R.id.webView)
         progress = findViewById(R.id.progress)
+        status = findViewById(R.id.status)
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         toolbar.inflateMenu(R.menu.power_menu)
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
-                R.id.action_refresh -> { relogged = false; start(); true }
+                R.id.action_refresh -> { refresh(); true }
                 R.id.action_settings -> { openSettings(); true }
                 else -> false
             }
         }
 
         setupWebView()
+
+        // 始终监听 WiFi：自动模式用于获取/更新网关；同时把网络绑定到 WiFi，保证能访问局域网
+        gateway = WifiGateway(this, true) { gw -> if (auto) onGateway(gw) }
+        gateway.start()
+
+        if (auto) {
+            progress.visibility = View.VISIBLE
+            handler.postDelayed(noWifi, 1500)
+        } else {
+            val b = RouterClient.normalize(cfg.address)
+            if (b == null) {
+                openSettings()
+                return
+            }
+            setBase(b)
+            start()
+        }
+    }
+
+    /** 自动模式：WiFi 网关变化（连接 / 切换 / 断开） */
+    private fun onGateway(gw: String?) {
+        handler.removeCallbacks(noWifi)
+        if (gw == null) {
+            base = ""
+            generation++
+            showStatus(getString(R.string.status_no_wifi))
+            return
+        }
+        val nb = RouterClient.replaceHost(cfg.address, gw)
+        cfg.address = nb
+        setBase(nb)
+        relogged = false
         start()
+    }
+
+    private fun setBase(b: String) {
+        base = b
+        target = "$b/cgi-bin/luci/admin/system/poweroff"
+    }
+
+    private fun refresh() {
+        relogged = false
+        if (base.isEmpty()) showStatus(getString(R.string.status_no_wifi)) else start()
+    }
+
+    private fun showStatus(msg: String) {
+        web.visibility = View.INVISIBLE
+        progress.visibility = View.GONE
+        status.text = msg
+        status.visibility = View.VISIBLE
     }
 
     private fun setupWebView() {
@@ -67,10 +128,12 @@ class PowerActivity : AppCompatActivity() {
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 view.visibility = View.INVISIBLE
+                status.visibility = View.GONE
                 progress.visibility = View.VISIBLE
             }
 
             override fun onPageFinished(view: WebView, url: String) {
+                if (base.isEmpty()) return
                 view.evaluateJavascript(HIDE_JS) {
                     // 若仍是登录页（会话失效），重新登录一次
                     view.evaluateJavascript(
@@ -81,10 +144,9 @@ class PowerActivity : AppCompatActivity() {
                                 relogged = true
                                 start()
                             } else {
-                                toast(R.string.err_login)
-                                openSettings()
+                                showStatus(getString(R.string.status_login))
                             }
-                        } else {
+                        } else if (base.isNotEmpty()) {
                             view.visibility = View.VISIBLE
                             progress.visibility = View.GONE
                         }
@@ -93,13 +155,12 @@ class PowerActivity : AppCompatActivity() {
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-                if (request.isForMainFrame) {
-                    toast(R.string.err_connect)
-                    progress.visibility = View.GONE
+                if (request.isForMainFrame && base.isNotEmpty()) {
+                    showStatus(getString(R.string.status_connect, base))
                 }
             }
 
-            // 仅对用户配置的路由器地址接受自签名 HTTPS 证书
+            // 仅对用户配置/自动获取的路由器地址接受自签名 HTTPS 证书
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
                 val host = Uri.parse(base).host
                 if (host != null && host == Uri.parse(error.url).host) handler.proceed() else handler.cancel()
@@ -108,8 +169,12 @@ class PowerActivity : AppCompatActivity() {
     }
 
     private fun start() {
+        if (base.isEmpty()) return
+        status.visibility = View.GONE
         progress.visibility = View.VISIBLE
         web.visibility = View.INVISIBLE
+
+        val gen = ++generation
         val address = base
         val user = cfg.username
         val pass = cfg.password
@@ -117,16 +182,18 @@ class PowerActivity : AppCompatActivity() {
         Thread {
             val r = RouterClient.login(address, user, pass)
             runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
+                // 期间已切换网络或被新的请求取代，丢弃旧结果
+                if (isFinishing || isDestroyed || gen != generation) return@runOnUiThread
                 if (r.ok) {
                     val cm = CookieManager.getInstance()
                     cm.removeAllCookies(null)
                     r.cookies.forEach { cm.setCookie("$address/cgi-bin/luci", it) }
                     cm.flush()
                     web.loadUrl(target, mapOf("Accept-Language" to "zh-CN,zh;q=0.9"))
+                } else if (r.error == "connect") {
+                    showStatus(getString(R.string.status_connect, address))
                 } else {
-                    toast(if (r.error == "connect") R.string.err_connect else R.string.err_login)
-                    openSettings()
+                    showStatus(getString(R.string.status_login))
                 }
             }
         }.start()
@@ -137,9 +204,9 @@ class PowerActivity : AppCompatActivity() {
         finish()
     }
 
-    private fun toast(res: Int) = Toast.makeText(this, res, Toast.LENGTH_LONG).show()
-
     override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        if (::gateway.isInitialized) gateway.stop()
         if (::web.isInitialized) web.destroy()
         super.onDestroy()
     }

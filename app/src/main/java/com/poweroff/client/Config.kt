@@ -22,9 +22,14 @@ class Config(context: Context) {
         get() = prefs.getString("password", "") ?: ""
         set(v) = prefs.edit().putString("password", v).apply()
 
-    /** 地址和用户名已填写即视为已配置（OpenWrt 允许空密码） */
+    /** 是否自动使用 WiFi 网关作为路由器地址（默认开启） */
+    var autoGateway: Boolean
+        get() = prefs.getBoolean("auto_gateway", true)
+        set(v) = prefs.edit().putBoolean("auto_gateway", v).apply()
+
+    /** 已配置：用户名已填写，且（自动获取网关 或 已填写地址）。OpenWrt 允许空密码 */
     val isComplete: Boolean
-        get() = address.isNotBlank() && username.isNotBlank()
+        get() = username.isNotBlank() && (autoGateway || address.isNotBlank())
 
     companion object {
         private const val FILE = "router_cfg"
