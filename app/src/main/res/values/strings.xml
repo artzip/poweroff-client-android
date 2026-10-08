@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">路由器关机</string>
+    <string name="app_name">OpenWrt关机</string>
     <string name="settings_title">连接设置</string>
     <string name="hint_address">路由器地址（如 192.168.1.1 或 https://192.168.1.1）</string>
     <string name="hint_username">用户名</string>

@@ -123,7 +123,7 @@ class PowerActivity : AppCompatActivity() {
                     cm.removeAllCookies(null)
                     r.cookies.forEach { cm.setCookie("$address/cgi-bin/luci", it) }
                     cm.flush()
-                    web.loadUrl(target)
+                    web.loadUrl(target, mapOf("Accept-Language" to "zh-CN,zh;q=0.9"))
                 } else {
                     toast(if (r.error == "connect") R.string.err_connect else R.string.err_login)
                     openSettings()
