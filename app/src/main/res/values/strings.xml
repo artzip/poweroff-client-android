@@ -10,7 +10,6 @@
     <string name="err_username">请输入用户名</string>
     <string name="menu_refresh">刷新</string>
     <string name="menu_settings">设置</string>
-    <string name="title_power">关机</string>
     <string name="err_connect">无法连接路由器，请检查地址和网络</string>
     <string name="err_login">登录失败，请检查用户名和密码</string>
     <string name="switch_auto">自动获取 WiFi 网关作为路由器地址</string>

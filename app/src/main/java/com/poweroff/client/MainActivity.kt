@@ -6,6 +6,10 @@ import android.os.Handler
 import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
+import android.view.WindowManager
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
@@ -35,6 +39,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         setContentView(R.layout.activity_main)
         etAddress = findViewById(R.id.etAddress)
         swAuto = findViewById(R.id.swAuto)
@@ -46,6 +51,7 @@ class MainActivity : AppCompatActivity() {
         setAddress(RouterClient.display(cfg.address).ifEmpty { "192.168.1.1" })
         etUser.setText(cfg.username)
         etPass.setText(cfg.password)
+        pasteOnly(etPass)
 
         // 手动修改地址 → 自动关闭“自动获取”；重新打开开关会再次填入网关
         etAddress.addTextChangedListener(object : TextWatcher {
@@ -88,6 +94,27 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, PowerActivity::class.java))
             finish()
         }
+    }
+
+    /** 密码框只保留“粘贴”，去掉复制/剪切/分享等其它菜单项 */
+    private fun pasteOnly(edit: TextInputEditText) {
+        val callback = object : ActionMode.Callback {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                for (i in menu.size() - 1 downTo 0) {
+                    val id = menu.getItem(i).itemId
+                    if (id != android.R.id.paste && id != android.R.id.pasteAsPlainText) {
+                        menu.removeItem(id)
+                    }
+                }
+                return menu.size() > 0
+            }
+
+            override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+            override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean = false
+            override fun onDestroyActionMode(mode: ActionMode) {}
+        }
+        edit.customSelectionActionModeCallback = callback
+        edit.customInsertionActionModeCallback = callback
     }
 
     private fun setAddress(text: String) {
