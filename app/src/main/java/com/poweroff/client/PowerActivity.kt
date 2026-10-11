@@ -149,8 +149,8 @@ class PowerActivity : AppCompatActivity() {
                     .setTitle(dialogTitle(url))
                     .setMessage(message)
                     .setView(input)
-                    .setPositiveButton(R.string.btn_ok) { _, _ -> result.confirm(input.text.toString()) }
-                    .setNegativeButton(R.string.btn_cancel) { _, _ -> result.cancel() }
+                    .setNegativeButton(R.string.btn_ok) { _, _ -> result.confirm(input.text.toString()) }
+                    .setPositiveButton(R.string.btn_cancel) { _, _ -> result.cancel() }
                     .setOnCancelListener { result.cancel() }
                     .show()
                 return true
@@ -254,12 +254,14 @@ class PowerActivity : AppCompatActivity() {
         val builder = AlertDialog.Builder(this)
             .setTitle(dialogTitle(url))
             .setMessage(message)
-            .setPositiveButton(R.string.btn_ok) { _, _ -> result.confirm() }
         if (withCancel) {
-            builder.setNegativeButton(R.string.btn_cancel) { _, _ -> result.cancel() }
+            // 对话框按钮从左到右为 [否定][肯定]，这里把“确定”放左边、“取消”放右边
+            builder.setNegativeButton(R.string.btn_ok) { _, _ -> result.confirm() }
+                .setPositiveButton(R.string.btn_cancel) { _, _ -> result.cancel() }
                 .setOnCancelListener { result.cancel() }
         } else {
-            builder.setOnCancelListener { result.confirm() }
+            builder.setPositiveButton(R.string.btn_ok) { _, _ -> result.confirm() }
+                .setOnCancelListener { result.confirm() }
         }
         jsDialog = builder.show()
         return true
