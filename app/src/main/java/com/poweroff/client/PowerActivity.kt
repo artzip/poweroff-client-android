@@ -9,13 +9,18 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.webkit.CookieManager
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
 import android.webkit.SslErrorHandler
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
 
@@ -28,6 +33,7 @@ class PowerActivity : AppCompatActivity() {
     private lateinit var cfg: Config
     private lateinit var gateway: WifiGateway
 
+    private var jsDialog: AlertDialog? = null
     private var base = ""
     private var target = ""
     private var auto = false
@@ -119,6 +125,44 @@ class PowerActivity : AppCompatActivity() {
         web.settings.setSupportZoom(false)
         CookieManager.getInstance().setAcceptCookie(true)
 
+        // 浏览器原生弹窗（confirm / alert / prompt）：WebView 默认不显示，
+        // 这里用原生对话框接管，标题模仿 Chrome 的“xxx 显示”
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onJsAlert(view: WebView, url: String, message: String, result: JsResult): Boolean =
+                showJsDialog(url, message, result, false)
+
+            override fun onJsConfirm(view: WebView, url: String, message: String, result: JsResult): Boolean =
+                showJsDialog(url, message, result, true)
+
+            override fun onJsPrompt(
+                view: WebView, url: String, message: String, defaultValue: String?, result: JsPromptResult
+            ): Boolean {
+                if (isFinishing || isDestroyed) {
+                    result.cancel()
+                    return true
+                }
+                val input = EditText(this@PowerActivity).apply {
+                    setText(defaultValue ?: "")
+                    setSingleLine()
+                }
+                jsDialog = AlertDialog.Builder(this@PowerActivity)
+                    .setTitle(dialogTitle(url))
+                    .setMessage(message)
+                    .setView(input)
+                    .setPositiveButton(R.string.btn_ok) { _, _ -> result.confirm(input.text.toString()) }
+                    .setNegativeButton(R.string.btn_cancel) { _, _ -> result.cancel() }
+                    .setOnCancelListener { result.cancel() }
+                    .show()
+                return true
+            }
+
+            // 离开页面前的确认（beforeunload）：直接允许
+            override fun onJsBeforeUnload(view: WebView, url: String, message: String, result: JsResult): Boolean {
+                result.confirm()
+                return true
+            }
+        }
+
         web.webViewClient = object : WebViewClient() {
 
             // 只允许停留在关机页面，禁止跳转到路由器其它页面
@@ -199,6 +243,28 @@ class PowerActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun dialogTitle(url: String): String =
+        getString(R.string.js_dialog_title, Uri.parse(url).host ?: "")
+
+    private fun showJsDialog(url: String, message: String, result: JsResult, withCancel: Boolean): Boolean {
+        if (isFinishing || isDestroyed) {
+            result.cancel()
+            return true
+        }
+        val builder = AlertDialog.Builder(this)
+            .setTitle(dialogTitle(url))
+            .setMessage(message)
+            .setPositiveButton(R.string.btn_ok) { _, _ -> result.confirm() }
+        if (withCancel) {
+            builder.setNegativeButton(R.string.btn_cancel) { _, _ -> result.cancel() }
+                .setOnCancelListener { result.cancel() }
+        } else {
+            builder.setOnCancelListener { result.confirm() }
+        }
+        jsDialog = builder.show()
+        return true
+    }
+
     private fun openSettings() {
         startActivity(Intent(this, MainActivity::class.java).putExtra(MainActivity.EXTRA_EDIT, true))
         finish()
@@ -206,6 +272,7 @@ class PowerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        jsDialog?.dismiss()
         if (::gateway.isInitialized) gateway.stop()
         if (::web.isInitialized) web.destroy()
         super.onDestroy()
@@ -215,11 +282,20 @@ class PowerActivity : AppCompatActivity() {
         /** 隐藏路由器的菜单、页眉、页脚，仅保留关机内容。不同主题如有残留可在此补充选择器 */
         private const val HIDE_JS = """(function(){
 var s=document.getElementById('po-hide');
-if(!s){s=document.createElement('style');s.id='po-hide';
+if(s){s.parentNode.removeChild(s);}
+s=document.createElement('style');s.id='po-hide';
 s.textContent='header,#header,.main-left,#mainmenu,#menubar,footer,nav,.sidebar,.navbar,.tabmenu,.darkMask{display:none!important}'
 +'.main-right,.main,#maincontent{margin:0!important;width:100%!important;max-width:100%!important;left:0!important}'
-+'body{padding-top:0!important}';
-document.head.appendChild(s);}
++'body{padding-top:0!important}'
++'body.modal-overlay-active #modal_overlay{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:auto!important;height:auto!important;margin:0!important;padding:16px!important;box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow:auto!important;z-index:2147483000!important}'
++'body.modal-overlay-active #modal_overlay>.modal{position:relative!important;top:auto!important;left:auto!important;right:auto!important;bottom:auto!important;transform:none!important;margin:auto!important;width:100%!important;max-width:420px!important;max-height:100%!important;overflow:auto!important;box-sizing:border-box!important}';
+document.head.appendChild(s);
+if(!window.__poObs){window.__poObs=true;
+new MutationObserver(function(){
+if(!document.body.classList.contains('modal-overlay-active'))return;
+var m=document.querySelector('#modal_overlay>.modal');
+if(m&&m.scrollIntoView){m.scrollIntoView({block:'center'});}
+}).observe(document.body,{attributes:true,attributeFilter:['class']});}
 })();"""
     }
 }
