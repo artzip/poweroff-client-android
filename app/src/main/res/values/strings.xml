@@ -19,4 +19,7 @@
     <string name="status_no_wifi">未连接 WiFi\n请连接路由器所在的 WiFi，连接后将自动获取网关地址</string>
     <string name="status_connect">无法连接 %s\n请确认当前 WiFi 是 OpenWrt 路由器所在的网络</string>
     <string name="status_login">登录失败\n请检查用户名和密码（右上角菜单 → 设置）</string>
+    <string name="btn_ok">确定</string>
+    <string name="btn_cancel">取消</string>
+    <string name="js_dialog_title">%s 显示</string>
 </resources>
